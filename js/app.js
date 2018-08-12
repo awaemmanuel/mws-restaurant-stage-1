@@ -3,7 +3,7 @@ function registerServiceWorker() {
       console.log('This browser does not support Service Workers');
       return false;
     }
-    console.log('Registering Service Worker 3.');
+    console.log('Registering Service Worker...');
     navigator.serviceWorker.register('sw.js')
       .then((registration) => {
         console.log(`ServiceWorker successfully registered: ${registration.scope}`);

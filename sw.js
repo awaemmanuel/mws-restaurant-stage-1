@@ -1,11 +1,13 @@
-const PRECACHE = 'restaurant-reviews-v1';
-const RUNTIME = 'runtime-v1';
+const PRECACHE = 'restaurant-reviews-v3';
+const RUNTIME = 'runtime-v3';
 
 // Links to cache
 const PRECACHE_URLS = [
   '/',
   'index.html',
+  'manifest.json',
   'restaurant.html',
+  'robots.txt',
   '/data/restaurants.json',
   '/css/styles.css',
   '/js/dbhelper.js',
@@ -51,6 +53,7 @@ self.addEventListener("install", event => {
 self.addEventListener('fetch', (event) => {
   // skip cross-origin requests
   if (event.request.url.startsWith(self.location.origin)) {
+    console.log('Service worker fetch...', self.origin.location);
     event.respondWith(
       caches.match(event.request)
         .then((cachedResponse) => {
