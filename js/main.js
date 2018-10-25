@@ -167,6 +167,23 @@ createRestaurantHTML = (restaurant) => {
   name.innerHTML = restaurant.name;
   info.append(name);
 
+  console.log("is_favorite: ", restaurant["is_favorite"]);
+  const isFavorite = (restaurant["is_favorite"] && restaurant["is_favorite"].toString() === "true") ? true : false;
+  const favoriteDiv = document.createElement("div");
+  favoriteDiv.className = "favorite-btn";
+  const favoriteBtn = document.createElement("button");
+  favoriteBtn.style.background = isFavorite
+    ? `url("/icons/love_2.svg") no-repeat`
+    : `url("icons/love_1.svg") no-repeat`;
+  favoriteBtn.innerHTML = isFavorite
+    ? restaurant.name + " is a favorite"
+    : restaurant.name + " is not a favorite";
+  favoriteBtn.id = "favorite-btn-" + restaurant.id;
+  favoriteBtn.onclick = (event) => handleFavoriteClick(restaurant, !isFavorite);
+  favoriteBtn.setAttribute('aria-label', 'Favorite Restaurant');
+  favoriteDiv.append(favoriteBtn);
+  info.append(favoriteDiv);
+
   const neighborhood = document.createElement('p');
   neighborhood.innerHTML = restaurant.neighborhood;
   info.append(neighborhood);
@@ -181,8 +198,8 @@ createRestaurantHTML = (restaurant) => {
   more.setAttribute('aria-label', 'View Details');
   info.append(more)
 
-  return li
-}
+  return li;
+};
 
 /**
  * Add markers for current restaurants to the map.
@@ -198,5 +215,21 @@ addMarkersToMap = (restaurants = self.restaurants) => {
     self.markers.push(marker);
   });
 
-} 
+};
+
+// Update properties of the restaurant data object
+const handleFavoriteClick = (restaurant, newState) => {
+  if (!restaurant) return;
+  const favoriteBtn = document.getElementById("favorite-btn-" + restaurant.id);
+  restaurant.is_favorite = newState;
+  console.log('Trying to update favorite');
+  favoriteBtn.onclick = (event) => handleFavoriteClick(restaurant, !newState);
+  DBHelper.toggleFavorite(restaurant, newState);
+  const favorite = document.getElementById("favorite-btn-" + restaurant.id);
+  favorite.style.background = restaurant.is_favorite
+    ? `url("/icons/love_2.svg") no-repeat`
+    : `url("icons/love_1.svg") no-repeat`;
+};
+
+
 

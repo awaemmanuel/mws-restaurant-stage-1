@@ -11,7 +11,7 @@ skipToRestaurantLink.addEventListener('click', (event) => {
 /**
  * Initialize map as soon as the page is loaded.
  */
-document.addEventListener('DOMContentLoaded', (event) => {  
+document.addEventListener('DOMContentLoaded', (event) => {
   initMap();
   console.log('Dom loaded');
 });
@@ -23,7 +23,7 @@ initMap = () => {
   fetchRestaurantFromURL((error, restaurant) => {
     if (error) { // Got an error!
       console.error(error);
-    } else {      
+    } else {
       self.newMap = L.map('map', {
         center: [restaurant.latlng.lat, restaurant.latlng.lng],
         zoom: 16,
@@ -35,13 +35,13 @@ initMap = () => {
         attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, ' +
           '<a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, ' +
           'Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
-        id: 'mapbox.streets'    
+        id: 'mapbox.streets'
       }).addTo(newMap);
       fillBreadcrumb();
       DBHelper.mapMarkerForRestaurant(self.restaurant, self.newMap);
     }
   });
-}  
+}
 
 /**
  * Get current restaurant from page URL.
@@ -80,7 +80,7 @@ fillRestaurantHTML = (restaurant = self.restaurant) => {
 
   const image = document.getElementById('restaurant-img');
   image.className = 'restaurant-img';
-  image.setAttribute('alt', restaurant.altString); 
+  image.setAttribute('alt', restaurant.altString);
   image.srcset = `/img/${restaurant.id}_400w.jpg 400w, /img/${restaurant.id}_800w.jpg 800w`;
   image.src = DBHelper.imageUrlForRestaurant(restaurant);
 
@@ -92,7 +92,8 @@ fillRestaurantHTML = (restaurant = self.restaurant) => {
     fillRestaurantHoursHTML();
   }
   // fill reviews
-  fillReviewsHTML();
+  console.log('About to call fetchRestaurantReviewsById');
+  DBHelper.fetchRestaurantReviewsById(restaurant.id, fillReviewsHTML)
 }
 
 /**
@@ -118,11 +119,48 @@ fillRestaurantHoursHTML = (operatingHours = self.restaurant.operating_hours) => 
 /**
  * Create all reviews HTML and add them to the webpage.
  */
-fillReviewsHTML = (reviews = self.restaurant.reviews) => {
+fillReviewsHTML = (error, reviews) => {
+  self.restaurant.reviews = reviews;
+  if (error) {
+    console.log("Error retrieving restaurant review: ", error);
+  }
+
   const container = document.getElementById('reviews-container');
+  const flex = document.createElement("div");
+  flex.id = "reviews-heading";
+  container.appendChild(flex);
+
   const title = document.createElement('h3');
   title.innerHTML = 'Reviews';
   container.appendChild(title);
+
+  // Review Modal
+  const reviewModalContainer = document.createElement("div");
+  reviewModalContainer.id = "review-modal";
+  reviewModalContainer.className = "modal";
+  const reviewModalHeader = document.createElement("div");
+  reviewModalHeader.className = "modal-header";
+  const reviewModalContent = document.createElement("div");
+  reviewModalContent.className = "modal-content";
+  const closeModal = document.createElement("span");
+  closeModal.className = "close";
+  closeModal.innerHTML = "&times;";
+  const heading = document.createElement("h2");
+  heading.innerHTML = "Add Your Review Below";
+  const reviewModalBody = document.createElement("div");
+  reviewModalBody.className = "modal-body";
+  const reviewModalfooter = document.createElement("div");
+  reviewModalfooter.className = "modal-footer";
+  const footerText = document.createElement("h3");
+  footerText.innerHTML = "MWS";
+  const reviewForm = document.createElement("div");
+
+  reviewModalHeader.appendChild(closeModal);
+  reviewModalHeader.appendChild(heading);
+  reviewModalBody.appendChild(reviewForm);
+  reviewModalContent.appendChild(reviewModalBody);
+  reviewModalContainer.appendChild(reviewModalContent);
+  flex.appendChild(reviewModalContainer);
 
   if (!reviews) {
     const noReviews = document.createElement('p');
@@ -135,6 +173,18 @@ fillReviewsHTML = (reviews = self.restaurant.reviews) => {
     ul.appendChild(createReviewHTML(review));
   });
   container.appendChild(ul);
+
+  // When the user clicks on <span> (x), close the modal
+  closeModal.onclick = () => {
+    reviewModalContainer.style.display = "none";
+  }
+
+  // When the user clicks anywhere outside of the modal, close it
+  window.onclick = (event) => {
+    if (event.target == reviewModalContainer) {
+      reviewModalContainer.style.display = "none";
+    }
+  }
 }
 
 /**
@@ -147,7 +197,8 @@ createReviewHTML = (review) => {
   li.appendChild(name);
 
   const date = document.createElement('p');
-  date.innerHTML = review.date;
+  const created = review.createdAt;
+  date.innerHTML = new Date(created).toLocaleString();
   li.appendChild(date);
 
   const rating = document.createElement('p');
@@ -164,7 +215,7 @@ createReviewHTML = (review) => {
 /**
  * Add restaurant name to the breadcrumb navigation menu
  */
-fillBreadcrumb = (restaurant=self.restaurant) => {
+fillBreadcrumb = (restaurant = self.restaurant) => {
   const breadcrumb = document.getElementById('breadcrumb');
   const li = document.createElement('li');
   li.setAttribute('aria-current', 'page');
@@ -189,3 +240,41 @@ getParameterByName = (name, url) => {
     return '';
   return decodeURIComponent(results[2].replace(/\+/g, ' '));
 }
+
+const saveReview = () => {
+  // Collect form data from review form
+  const name = document.getElementById("review-name").value;
+  const rating = document.getElementById("review-rating").value - 0;
+  const comments = document.getElementById("review-comment").value;
+  const addReviewBtn = document.getElementById("add-review");
+  const reviewModalBtn = document.getElementById("btnSaveReview");
+  const restaurant_id = self.restaurant.id;
+  const createdAt = new Date().getTime();
+  const review = {
+    restaurant_id,
+    name,
+    rating,
+    comments,
+    createdAt,
+    updatedAt: createdAt,
+  }
+  console.log("review-name: ", JSON.stringify(review, null, 2));
+  DBHelper.postReviewToServer(review)
+    .then(data => {
+      // Update the button onclick event
+      reviewModalBtn.onclick = (event) => {
+        return saveReview();
+      };
+
+      // reset form values
+      const form = document.getElementById("review-form");
+      form.reset()
+
+      const modal = document.getElementById("exampleModal");
+      modal.setAttribute('aria-hidden', true);
+      $("#exampleModal").modal('hide');
+      const ul = document.getElementById('reviews-list');
+      ul.appendChild(createReviewHTML(review));
+    })
+    .catch(error => console.error(error))
+};

@@ -1,5 +1,3 @@
-let dbPromise;
-
 /**
  * Common database helper functions.
  */
@@ -13,6 +11,11 @@ class DBHelper {
     return `http://localhost:${port}/restaurants`;
   }
 
+  static get SERVER_REVIEWS_URL() {
+    const port = 1337; // Change this to your server port
+    return `http://localhost:${port}/reviews`;
+  }
+
   /**
    * Open or Create a Database
    * Chrome complaining about using the idb promise library
@@ -20,15 +23,18 @@ class DBHelper {
    */
   static openOrCreateDB() {
     return new Promise((resolve) => {
-      let idbOpenRequest = indexedDB.open('restaurants-db', 1);
+      let idbOpenRequest = indexedDB.open('restaurants-db', 2);
       idbOpenRequest.onerror = (event) => console.log('Open IDB error');
       idbOpenRequest.onsuccess = (event) => {
+        console.log('Resolving to ', idbOpenRequest.result);
         resolve(idbOpenRequest.result);
       };
       idbOpenRequest.onupgradeneeded = (event) => {
         let db = event.target.result;
         db.onerror = () => console.log('Error opening DB');
-        db.createObjectStore('restaurants', { keyPath: 'id'});
+        db.createObjectStore('restaurants', { keyPath: 'id' });
+        db.createObjectStore('reviews', { keyPath: 'id', autoIncrement: true });
+        db.createObjectStore('pending-reviews', { keyPath: 'updateTime', autoIncrement: true });
       };
     });
   }
@@ -49,7 +55,7 @@ class DBHelper {
             if (res.ok) {
               return res.json()
             }
-            throw new Error('[FETCH ACTION] - Network error');
+            throw new Error('[RESTAURANT FETCH ACTION] - Network error');
           })
           .then(restaurants => {
             callback(null, restaurants);
@@ -60,25 +66,26 @@ class DBHelper {
               .then((db) => {
                 if (!db) throw new Error('[DB ERROR] - No DB found.');
                 let tx = db.transaction(['restaurants'], 'readwrite');
-                tx.oncomplete = () => console.log('transaction success');
-                tx.onerror = () => console.log('transaction error');
+                tx.oncomplete = () => console.log('restaurants transaction success');
+                tx.onerror = () => console.log('restaurants transaction error');
                 let objectStore = tx.objectStore('restaurants');
                 restaurants.forEach((restaurant) => {
+                  console.log('Putting restaurant: ', restaurant);
                   objectStore.put(restaurant);
-                  objectStore.onsuccess = () => console.log('success adding', restaurant);
+                  objectStore.onsuccess = () => console.log('restaurants success adding', restaurant);
                 });
               });
           })
           .catch(err => {
             this.openOrCreateDB()
-              .then(function (db) {
+              .then((db) => {
                 let tx = db.transaction(['restaurants']);
                 let objectStore = tx.objectStore('restaurants');
                 let getAllRequest = objectStore.getAll();
                 getAllRequest.onsuccess = (event) => {
                   callback(null, event.target.result);
                 }
-            });
+              });
           });
       });
   }
@@ -100,6 +107,44 @@ class DBHelper {
         }
       }
     });
+  }
+
+  static fetchRestaurantReviewsById(id, callback) {
+    this.openOrCreateDB()
+      .then(db => {
+        if (!db) return;
+        // 1. Check if there are reviews in the IDB
+        const tx = db.transaction('reviews');
+        const store = tx.objectStore('reviews');
+        return store.getAll();
+      })
+      .then(reviews => {
+        if (reviews && reviews.length > 0) {
+          // Continue with reviews from IDB
+          callback(null, reviews);
+        } else {
+          // 2. If there are no reviews in the IDB, fetch reviews from the network
+          fetch(`${DBHelper.SERVER_REVIEWS_URL}/?restaurant_id=${id}`)
+            .then(res => res.json())
+            .then(reviews => {
+              this.openOrCreateDB()
+                .then(db => {
+                  if (!db) return;
+                  // 3. Put fetched reviews into IDB
+                  const tx = db.transaction('reviews', 'readwrite');
+                  const store = tx.objectStore('reviews');
+                  reviews.forEach(review => store.put(review))
+                });
+              // Continue with reviews from network
+              callback(null, reviews);
+            })
+            .catch(error => {
+              // Unable to fetch reviews from network
+              callback(error, null);
+            })
+        }
+      })
+      .catch((err) => callback(err, null));
   }
 
   /**
@@ -208,15 +253,122 @@ class DBHelper {
   /**
    * Map marker for a restaurant.
    */
-   static mapMarkerForRestaurant(restaurant, map) {
+  static mapMarkerForRestaurant(restaurant, map) {
     // https://leafletjs.com/reference-1.3.0.html#marker  
     const marker = new L.marker([restaurant.latlng.lat, restaurant.latlng.lng],
-      {title: restaurant.name,
-      alt: restaurant.name,
-      url: DBHelper.urlForRestaurant(restaurant)
+      {
+        title: restaurant.name,
+        alt: restaurant.name,
+        url: DBHelper.urlForRestaurant(restaurant)
       })
-      marker.addTo(newMap);
+    marker.addTo(newMap);
     return marker;
   }
-}
 
+  /**
+   * DB Helper for handling favorite icon toggle
+   * @param {string} id 
+   * @param {boolean} newState 
+   */
+  static toggleFavorite(restaurant, isFavorite) {
+    fetch(`${DBHelper.SERVER_URL}/${restaurant.id}/?is_favorite=${isFavorite}`, { method: 'PUT' })
+      .then(response => {
+        return response.json();
+      })
+      .then(data => {
+        this.openOrCreateDB()
+          .then(db => {
+            if (!db) return;
+            const tx = db.transaction('restaurants', 'readwrite');
+            const store = tx.objectStore('restaurants');
+            store.put(data)
+          });
+        return data;
+      })
+      .catch(error => {
+        restaurant.is_favorite = isFavorite;
+        this.openOrCreateDB()
+          .then(db => {
+            if (!db) return;
+            const tx = db.transaction('restaurants', 'readwrite');
+            const store = tx.objectStore('restaurants');
+            store.put(restaurant);
+          }).catch(error => {
+            console.log(error);
+            return;
+          });
+      });
+  }
+
+  /**
+   * Save the Review to server
+   */
+  static postReviewToServer(review) {
+    console.log('Calling postReviewToServer ', review);
+    const opts = {
+      body: JSON.stringify(review),
+      cache: 'no-cache',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+      mode: 'cors',
+      redirect: 'follow',
+      referrer: 'no-referrer',
+    };
+    return fetch(`${DBHelper.SERVER_REVIEWS_URL}`, opts)
+      .then(res => {
+        res.json()
+          .then(data => {
+            this.openOrCreateDB()
+              .then(db => {
+                if (!db) return;
+                // Put fetched reviews into IDB
+                const tx = db.transaction('reviews', 'readwrite');
+                const store = tx.objectStore('reviews');
+                store.put(data);
+              });
+            return data;
+          })
+      })
+      .catch(() => {
+        // Network is offline, save to pending db
+        review['updateTime'] = new Date().getTime();
+        console.log('Updated review: ', review);
+        this.openOrCreateDB()
+          .then(db => {
+            if (!db) return;
+            // Put fetched reviews into IDB
+            const tx = db.transaction('pending-reviews', 'readwrite');
+            const store = tx.objectStore('pending-reviews');
+            store.put(review);
+            console.log('Review stored offline in IDB');
+          });
+        return;
+      });
+  }
+
+  static postOfflineReviewsToServer() {
+    console.log('Calling postOfflineReviewsToServer');
+    this.openOrCreateDB()
+      .then(db => {
+        if (!db) return;
+        const tx = db.transaction('pending-reviews', 'readwrite');
+        const store = tx.objectStore('pending-reviews');
+        let getAllRequest = store.getAll();
+        getAllRequest.onsuccess = (event) => {
+          const reviews = event.target.result;
+          if (!reviews) {
+            console.log('No pending reviews to post to server');
+            return;
+          }
+          console.log('Found offline reviews: ', reviews);
+          for (const review of reviews) {
+            DBHelper.postReviewToServer(review);
+          }
+          const tx = db.transaction('pending-reviews', 'readwrite');
+          const store = tx.objectStore('pending-reviews');
+          store.clear();
+        }
+      });
+  }
+}

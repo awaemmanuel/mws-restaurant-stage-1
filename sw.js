@@ -15,6 +15,9 @@ const PRECACHE_URLS = [
   '/js/restaurant_info.js',
   '/sw.js',
   '/js/app.js',
+  '/icons/love_1.svg',
+  '/icons/love_2.svg',
+  
 ];
 // Cache images
 for(let i = 1; i <= 10; i++) {
@@ -63,7 +66,7 @@ self.addEventListener('fetch', (event) => {
           return caches.open(RUNTIME)
             .then((cache) => {
               return fetch(event.request)
-                .then((resp) => {
+                .then((response) => {
                   // update runtime cache with a copy of the network response
                   return cache.put(event.request, respone.clone())
                     .then(() => response);
@@ -90,4 +93,13 @@ self.addEventListener('activate', (event) => {
       })
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (event) => {
+  console.log(event);
+
+  // var messages = JSON.parse(event.data);
+  if (event.data.action === 'skipWaiting') {
+     self.skipWaiting();
+  }
 });
