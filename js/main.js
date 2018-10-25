@@ -217,22 +217,7 @@ addMarkersToMap = (restaurants = self.restaurants) => {
 
 };
 
-
-/**
- * Helper functions
- */
-
 // Update properties of the restaurant data object
-const handleFavoriteClick2 = (restaurant, newState) => {
-  if (!restaurant) return;
-  const favoriteBtn = document.getElementById("favorite-btn-" + restaurant.id);
-  // const restaurant = self.restaurants.filter(res => res.id === id)[0];
-  restaurant["is_favorite"] = newState;
-  console.log('Trying to update favorite');
-  favoriteBtn.onclick = (event) => handleFavoriteClick(restaurant, !newState);
-  DBHelper.handleFavoriteClick(restaurant, newState);
-};
-
 const handleFavoriteClick = (restaurant, newState) => {
   if (!restaurant) return;
   const favoriteBtn = document.getElementById("favorite-btn-" + restaurant.id);
